@@ -565,14 +565,17 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 weights = sanitize_weights(
                     model_class.VisionModel, weights, model_config.vision_config
                 )
-            if hasattr(model_class, "LanguageModel"):
-                weights = sanitize_weights(
-                    model_class.LanguageModel, weights, model_config.text_config
-                )
+
             if hasattr(model_class, "AudioModel"):
                 weights = sanitize_weights(
                     model_class.AudioModel, weights, model_config.audio_config
                 )
+
+
+    if hasattr(model_class, "LanguageModel"):
+        weights = sanitize_weights(
+            model_class.LanguageModel, weights, model_config.text_config
+        )
 
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
