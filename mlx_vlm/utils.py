@@ -552,34 +552,33 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
     if not is_mlx_format:
         # Sanitize weights
         weights = sanitize_weights(model, weights)
-    else:
-        # Only run module-specific sanitization for MLX-format checkpoints
-        # (non-MLX already sanitized above via the full model.sanitize())
-        if hasattr(model, "thinker") and hasattr(model.thinker, "sanitize"):
-            weights = sanitize_weights(model.thinker, weights)
-            if getattr(model.thinker, "vision_tower", None) is not None:
-                weights = sanitize_weights(model.thinker.vision_tower, weights)
-            if getattr(model.thinker, "audio_tower", None) is not None:
-                weights = sanitize_weights(model.thinker.audio_tower, weights)
-            if getattr(model.thinker, "language_model", None) is not None:
-                weights = sanitize_weights(model.thinker.language_model, weights)
-        else:
-            vision_cfg = getattr(model_config, "vision_config", None)
-            if hasattr(model_class, "VisionModel") and vision_cfg is not None:
-                weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
-            
-            text_cfg = getattr(model_config, "text_config", None)
-            if hasattr(model_class, "LanguageModel") and text_cfg is not None:
-                weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
-            
-            audio_cfg = getattr(model_config, "audio_config", None)
-            if hasattr(model_class, "AudioModel") and audio_cfg is not None:
-                weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
 
-        if getattr(model, "code2wav", None) is not None:
-            weights = sanitize_weights(model.code2wav, weights)
-        if getattr(model, "talker", None) is not None:
-            weights = sanitize_weights(model.talker, weights)
+    # Run module-specific sanitization for both MLX and non-MLX format checkpoints
+    if hasattr(model, "thinker") and hasattr(model.thinker, "sanitize"):
+        weights = sanitize_weights(model.thinker, weights)
+        if getattr(model.thinker, "vision_tower", None) is not None:
+            weights = sanitize_weights(model.thinker.vision_tower, weights)
+        if getattr(model.thinker, "audio_tower", None) is not None:
+            weights = sanitize_weights(model.thinker.audio_tower, weights)
+        if getattr(model.thinker, "language_model", None) is not None:
+            weights = sanitize_weights(model.thinker.language_model, weights)
+    else:
+        vision_cfg = getattr(model_config, "vision_config", None)
+        if hasattr(model_class, "VisionModel") and vision_cfg is not None:
+            weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
+        
+        text_cfg = getattr(model_config, "text_config", None)
+        if hasattr(model_class, "LanguageModel") and text_cfg is not None:
+            weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
+        
+        audio_cfg = getattr(model_config, "audio_config", None)
+        if hasattr(model_class, "AudioModel") and audio_cfg is not None:
+            weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
+
+    if getattr(model, "code2wav", None) is not None:
+        weights = sanitize_weights(model.code2wav, weights)
+    if getattr(model, "talker", None) is not None:
+        weights = sanitize_weights(model.talker, weights)
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
         if quantization_config is None:
