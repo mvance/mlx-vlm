@@ -564,10 +564,6 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             weights = sanitize_weights(model.thinker.audio_tower, weights)
         if hasattr(model.thinker, "language_model"):
             weights = sanitize_weights(model.thinker.language_model, weights)
-        if hasattr(model, "code2wav"):
-            weights = sanitize_weights(model.code2wav, weights)
-        if hasattr(model, "talker"):
-            weights = sanitize_weights(model.talker, weights)
     else:
         if hasattr(model_class, "VisionModel") and getattr(model_config, "vision_config", None) is not None:
             weights = sanitize_weights(
@@ -581,6 +577,11 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             weights = sanitize_weights(
                 model_class.AudioModel, weights, model_config.audio_config
             )
+
+    if hasattr(model, "code2wav"):
+        weights = sanitize_weights(model.code2wav, weights)
+    if hasattr(model, "talker"):
+        weights = sanitize_weights(model.talker, weights)
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
         if quantization_config is None:
