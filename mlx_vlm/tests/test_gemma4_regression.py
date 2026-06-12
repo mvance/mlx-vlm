@@ -108,12 +108,8 @@ class TestGemma4Regression(unittest.TestCase):
 
             mx.save_safetensors(str(tmp_path / "model.safetensors"), weights, metadata={"format": "mlx"})
             
-            try:
-                model = load_model(tmp_path)
-                self.assertIsNotNone(model)
-                
-            except ValueError as e:
-                self.fail(f"load_model failed with ValueError: {e}")
+            model = load_model(tmp_path)
+            self.assertIsNotNone(model)
 
 if __name__ == "__main__":
     unittest.main()

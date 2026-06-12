@@ -344,7 +344,7 @@ def _has_quantized_weights(path: str, weights: Optional[Dict[str, mx.array]]) ->
     return weights is not None and f"{path}.scales" in weights
 
 
-def get_class_predicate(skip_vision=False, weights=None, quantization_config=None):
+def _quantize_predicate(skip_vision=False, weights=None, quantization_config=None):
     def predicate(p, m):
         if (
             skip_multimodal_module(p)
@@ -552,36 +552,34 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
     if not is_mlx_format:
         # Sanitize weights
         weights = sanitize_weights(model, weights)
-
-    # Always run module-specific sanitization to handle architecture changes
-    # for models already in MLX format (e.g. legacy community checkpoints 
-    # might contain extra weights like layer_scalar from pre-KV-sharing architectures).
-    if hasattr(model, "thinker") and hasattr(model.thinker, "sanitize"):
-        weights = sanitize_weights(model.thinker, weights)
-        if hasattr(model.thinker, "vision_tower"):
-            weights = sanitize_weights(model.thinker.vision_tower, weights)
-        if hasattr(model.thinker, "audio_tower"):
-            weights = sanitize_weights(model.thinker.audio_tower, weights)
-        if hasattr(model.thinker, "language_model"):
-            weights = sanitize_weights(model.thinker.language_model, weights)
     else:
-        if hasattr(model_class, "VisionModel") and getattr(model_config, "vision_config", None) is not None:
-            weights = sanitize_weights(
-                model_class.VisionModel, weights, model_config.vision_config
-            )
-        if hasattr(model_class, "LanguageModel") and getattr(model_config, "text_config", None) is not None:
-            weights = sanitize_weights(
-                model_class.LanguageModel, weights, model_config.text_config
-            )
-        if hasattr(model_class, "AudioModel") and getattr(model_config, "audio_config", None) is not None:
-            weights = sanitize_weights(
-                model_class.AudioModel, weights, model_config.audio_config
-            )
+        # Only run module-specific sanitization for MLX-format checkpoints
+        # (non-MLX already sanitized above via the full model.sanitize())
+        if hasattr(model, "thinker") and hasattr(model.thinker, "sanitize"):
+            weights = sanitize_weights(model.thinker, weights)
+            if getattr(model.thinker, "vision_tower", None) is not None:
+                weights = sanitize_weights(model.thinker.vision_tower, weights)
+            if getattr(model.thinker, "audio_tower", None) is not None:
+                weights = sanitize_weights(model.thinker.audio_tower, weights)
+            if getattr(model.thinker, "language_model", None) is not None:
+                weights = sanitize_weights(model.thinker.language_model, weights)
+        else:
+            vision_cfg = getattr(model_config, "vision_config", None)
+            if hasattr(model_class, "VisionModel") and vision_cfg is not None:
+                weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
+            
+            text_cfg = getattr(model_config, "text_config", None)
+            if hasattr(model_class, "LanguageModel") and text_cfg is not None:
+                weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
+            
+            audio_cfg = getattr(model_config, "audio_config", None)
+            if hasattr(model_class, "AudioModel") and audio_cfg is not None:
+                weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
 
-    if hasattr(model, "code2wav"):
-        weights = sanitize_weights(model.code2wav, weights)
-    if hasattr(model, "talker"):
-        weights = sanitize_weights(model.talker, weights)
+        if getattr(model, "code2wav", None) is not None:
+            weights = sanitize_weights(model.code2wav, weights)
+        if getattr(model, "talker", None) is not None:
+            weights = sanitize_weights(model.talker, weights)
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
         if quantization_config is None:
@@ -627,7 +625,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             else model
         )
 
-        def get_class_predicate(p, m):
+        def _quantize_predicate(p, m):
             # Skip legacy multimodal layers unless the checkpoint has quantized
             # tensors for this exact module.
             if (
@@ -652,7 +650,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             group_size=quantization["group_size"],
             bits=quantization["bits"],
             mode=quantization.get("mode", "affine"),
-            class_predicate=get_class_predicate,
+            class_predicate=_quantize_predicate,
         )
 
     if kwargs.get("quantize_activations", False):
