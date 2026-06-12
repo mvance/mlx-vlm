@@ -106,10 +106,20 @@ class TestGemma4Regression(unittest.TestCase):
             for i in range(2):
                 weights.update(vision_block_weights(i))
 
+            # 1. Test the MLX-format path (where we filter by parameter keys)
             mx.save_safetensors(str(tmp_path / "model.safetensors"), weights, metadata={"format": "mlx"})
-            
             model = load_model(tmp_path)
             self.assertIsNotNone(model)
+            
+            # 2. Test the non-MLX format path (where we run full sanitization)
+            non_mlx_path = tmp_path / "non_mlx"
+            non_mlx_path.mkdir()
+            with open(non_mlx_path / "config.json", "w") as f:
+                json.dump(config, f)
+            mx.save_safetensors(str(non_mlx_path / "model.safetensors"), weights) # No metadata = non-MLX
+            
+            non_mlx_model = load_model(non_mlx_path)
+            self.assertIsNotNone(non_mlx_model)
 
 if __name__ == "__main__":
     unittest.main()
