@@ -554,24 +554,30 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         weights = sanitize_weights(model, weights)
 
     # Always run module-specific sanitization to handle architecture changes
-    # for models already in MLX format.
+    # for models already in MLX format (e.g. legacy community checkpoints 
+    # might contain extra weights like layer_scalar from pre-KV-sharing architectures).
     if hasattr(model, "thinker") and hasattr(model.thinker, "sanitize"):
         weights = sanitize_weights(model.thinker, weights)
-        weights = sanitize_weights(model.thinker.vision_tower, weights)
-        weights = sanitize_weights(model.thinker.audio_tower, weights)
-        weights = sanitize_weights(model.thinker.language_model, weights)
-        weights = sanitize_weights(model.code2wav, weights)
-        weights = sanitize_weights(model.talker, weights)
+        if hasattr(model.thinker, "vision_tower"):
+            weights = sanitize_weights(model.thinker.vision_tower, weights)
+        if hasattr(model.thinker, "audio_tower"):
+            weights = sanitize_weights(model.thinker.audio_tower, weights)
+        if hasattr(model.thinker, "language_model"):
+            weights = sanitize_weights(model.thinker.language_model, weights)
+        if hasattr(model, "code2wav"):
+            weights = sanitize_weights(model.code2wav, weights)
+        if hasattr(model, "talker"):
+            weights = sanitize_weights(model.talker, weights)
     else:
-        if hasattr(model_class, "VisionModel"):
+        if hasattr(model_class, "VisionModel") and getattr(model_config, "vision_config", None) is not None:
             weights = sanitize_weights(
                 model_class.VisionModel, weights, model_config.vision_config
             )
-        if hasattr(model_class, "LanguageModel"):
+        if hasattr(model_class, "LanguageModel") and getattr(model_config, "text_config", None) is not None:
             weights = sanitize_weights(
                 model_class.LanguageModel, weights, model_config.text_config
             )
-        if hasattr(model_class, "AudioModel"):
+        if hasattr(model_class, "AudioModel") and getattr(model_config, "audio_config", None) is not None:
             weights = sanitize_weights(
                 model_class.AudioModel, weights, model_config.audio_config
             )

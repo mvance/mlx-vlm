@@ -3,10 +3,15 @@ import mlx.core as mx
 from mlx_vlm.utils import load_model
 import tempfile
 from pathlib import Path
+from typing import Dict
 import json
 
 class TestGemma4Regression(unittest.TestCase):
     def test_load_mlx_format_with_extra_weights(self):
+        """
+        Verify that models in MLX format with extra legacy weights (like layer_scalar)
+        can be loaded successfully by ensuring module-specific sanitization runs.
+        """
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             text_config = {
@@ -49,7 +54,7 @@ class TestGemma4Regression(unittest.TestCase):
             with open(tmp_path / "config.json", "w") as f:
                 json.dump(config, f)
             
-            def layer_weights(i):
+            def layer_weights(i) -> Dict[str, mx.array]:
                 return {
                     f"language_model.model.layers.{i}.self_attn.q_proj.weight": mx.zeros((16, 16)),
                     f"language_model.model.layers.{i}.self_attn.k_proj.weight": mx.zeros((8, 16)),
@@ -64,6 +69,8 @@ class TestGemma4Regression(unittest.TestCase):
                     f"language_model.model.layers.{i}.mlp.gate_proj.weight": mx.zeros((32, 16)),
                     f"language_model.model.layers.{i}.mlp.up_proj.weight": mx.zeros((32, 16)),
                     f"language_model.model.layers.{i}.mlp.down_proj.weight": mx.zeros((16, 32)),
+                    # layer_scalar is present in legacy checkpoints (pre-KV-sharing architecture)
+                    # and should be silently dropped by the sanitizer, not cause a ValueError.
                     f"language_model.model.layers.{i}.layer_scalar": mx.ones((1,)),
                 }
 
@@ -74,7 +81,7 @@ class TestGemma4Regression(unittest.TestCase):
             for i in range(4):
                 weights.update(layer_weights(i))
             
-            def vision_block_weights(i):
+            def vision_block_weights(i) -> Dict[str, mx.array]:
                 return {
                     f"vision_tower.encoder.layers.{i}.self_attn.q_proj.linear.weight": mx.zeros((16, 16)),
                     f"vision_tower.encoder.layers.{i}.self_attn.k_proj.linear.weight": mx.zeros((16, 16)),
@@ -104,7 +111,7 @@ class TestGemma4Regression(unittest.TestCase):
             try:
                 model = load_model(tmp_path)
                 self.assertIsNotNone(model)
-                print("Test passed!")
+                
             except ValueError as e:
                 self.fail(f"load_model failed with ValueError: {e}")
 
