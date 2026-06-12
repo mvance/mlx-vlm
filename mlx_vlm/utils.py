@@ -344,7 +344,7 @@ def _has_quantized_weights(path: str, weights: Optional[Dict[str, mx.array]]) ->
     return weights is not None and f"{path}.scales" in weights
 
 
-def _quantize_predicate(skip_vision=False, weights=None, quantization_config=None):
+def get_class_predicate(skip_vision=False, weights=None, quantization_config=None):
     def predicate(p, m):
         if (
             skip_multimodal_module(p)
@@ -624,7 +624,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             else model
         )
 
-        def _quantize_predicate(p, m):
+        def should_quantize(p, m):
             # Skip legacy multimodal layers unless the checkpoint has quantized
             # tensors for this exact module.
             if (
@@ -649,7 +649,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             group_size=quantization["group_size"],
             bits=quantization["bits"],
             mode=quantization.get("mode", "affine"),
-            class_predicate=_quantize_predicate,
+            class_predicate=should_quantize,
         )
 
     if kwargs.get("quantize_activations", False):
