@@ -550,50 +550,53 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         config["quantization_config"] = transformed_quantization
 
     if not is_mlx_format:
-        # Sanitize weights
+        # Sanitize weights (top-level remapping and transpositions)
         weights = sanitize_weights(model, weights)
 
-        thinker = getattr(model, "thinker", None)
-        if thinker is not None:
-            if hasattr(thinker, "sanitize"):
-                weights = sanitize_weights(thinker, weights)
-            if getattr(thinker, "vision_tower", None) is not None:
-                weights = sanitize_weights(thinker.vision_tower, weights)
-            if getattr(thinker, "audio_tower", None) is not None:
-                weights = sanitize_weights(thinker.audio_tower, weights)
-            if getattr(thinker, "language_model", None) is not None:
-                weights = sanitize_weights(thinker.language_model, weights)
-        else:
-            vision_cfg = getattr(model_config, "vision_config", None)
-            if hasattr(model_class, "VisionModel"):
-                if vision_cfg is not None:
-                    weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
-                else:
-                    logging.debug("Skipping VisionModel sanitization: vision_config is None")
-            
-            text_cfg = getattr(model_config, "text_config", None)
-            if hasattr(model_class, "LanguageModel"):
-                if text_cfg is not None:
-                    weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
-                else:
-                    logging.debug("Skipping LanguageModel sanitization: text_config is None")
-            
-            audio_cfg = getattr(model_config, "audio_config", None)
-            if hasattr(model_class, "AudioModel"):
-                if audio_cfg is not None:
-                    weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
-                else:
-                    logging.debug("Skipping AudioModel sanitization: audio_config is None")
-
-        if getattr(model, "code2wav", None) is not None:
-            weights = sanitize_weights(model.code2wav, weights)
-        if getattr(model, "talker", None) is not None:
-            weights = sanitize_weights(model.talker, weights)
+    # Always run module-specific sanitization to handle architecture changes
+    # and legacy key remapping for both MLX and non-MLX checkpoints.
+    # (Module sanitizers are typically idempotent regarding transpositions).
+    thinker = getattr(model, "thinker", None)
+    if thinker is not None:
+        if hasattr(thinker, "sanitize"):
+            weights = sanitize_weights(thinker, weights)
+        if getattr(thinker, "vision_tower", None) is not None:
+            weights = sanitize_weights(thinker.vision_tower, weights)
+        if getattr(thinker, "audio_tower", None) is not None:
+            weights = sanitize_weights(thinker.audio_tower, weights)
+        if getattr(thinker, "language_model", None) is not None:
+            weights = sanitize_weights(thinker.language_model, weights)
     else:
-        # For MLX format checkpoints, we only need to filter out legacy extra weights
-        # (like layer_scalar) to prevent load_weights from raising a ValueError.
-        # We can safely do this by keeping only keys that match the model's parameters
-        # or their quantized counterparts (.scales, .biases).
+        vision_cfg = getattr(model_config, "vision_config", None)
+        if hasattr(model_class, "VisionModel"):
+            if vision_cfg is not None:
+                weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
+            else:
+                logging.debug("Skipping VisionModel sanitization: vision_config is None")
+        
+        text_cfg = getattr(model_config, "text_config", None)
+        if hasattr(model_class, "LanguageModel"):
+            if text_cfg is not None:
+                weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
+            else:
+                logging.debug("Skipping LanguageModel sanitization: text_config is None")
+        
+        audio_cfg = getattr(model_config, "audio_config", None)
+        if hasattr(model_class, "AudioModel"):
+            if audio_cfg is not None:
+                weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
+            else:
+                logging.debug("Skipping AudioModel sanitization: audio_config is None")
+
+    if getattr(model, "code2wav", None) is not None:
+        weights = sanitize_weights(model.code2wav, weights)
+    if getattr(model, "talker", None) is not None:
+        weights = sanitize_weights(model.talker, weights)
+
+    if is_mlx_format:
+        # For MLX format checkpoints, we now filter out any legacy extra weights
+        # that were not removed by the module-specific sanitizers.
+        # This prevents load_weights from raising a ValueError.
         model_keys = {k for k, _ in tree_flatten(model.parameters())}
         allowed_keys = set()
         for k in model_keys:

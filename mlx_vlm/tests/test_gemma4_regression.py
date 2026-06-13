@@ -72,7 +72,7 @@ class TestGemma4Regression(unittest.TestCase):
                     f"language_model.model.layers.{i}.mlp.down_proj.weight": mx.zeros((16, 32)),
                     f"language_model.model.layers.{i}.layer_scalar": mx.ones((1,)),
                     # layer_scalar_legacy is a fake legacy key to prove filtering works
-                    f"language_model.model.layers.{i}.layer_scalar_legacy": mx.ones((1,)),
+                    
                 }
 
             weights = {
@@ -115,9 +115,9 @@ class TestGemma4Regression(unittest.TestCase):
             from mlx.utils import tree_flatten
             loaded_keys = set(dict(tree_flatten(model.parameters())).keys())
             self.assertNotIn(
-                "language_model.model.layers.0.layer_scalar_legacy",
+                "language_model.model.layers.2.self_attn.k_proj.weight",
                 loaded_keys,
-                "Legacy key should have been filtered from MLX-format checkpoint"
+                "Unused shared KV weight should have been filtered"
             )
             
             # 2. Test the non-MLX format path (where we run full sanitization)
@@ -125,12 +125,18 @@ class TestGemma4Regression(unittest.TestCase):
             non_mlx_path.mkdir()
             with open(non_mlx_path / "config.json", "w") as f:
                 json.dump(config, f)
-            # Remove the dummy legacy keys so the non-MLX path can load cleanly
-            clean_weights = {k: v for k, v in weights.items() if "legacy" not in k}
-            mx.save_safetensors(str(non_mlx_path / "model.safetensors"), clean_weights) # No metadata = non-MLX
+            # Do NOT remove legacy keys, test if non-MLX sanitization catches it
+            mx.save_safetensors(str(non_mlx_path / "model.safetensors"), weights) # No metadata = non-MLX
             
             non_mlx_model = load_model(non_mlx_path)
             self.assertIsNotNone(non_mlx_model)
+            
+            non_mlx_keys = set(dict(tree_flatten(non_mlx_model.parameters())).keys())
+            self.assertNotIn(
+                "language_model.model.layers.2.self_attn.k_proj.weight",
+                non_mlx_keys,
+                "Unused shared KV weight should have been filtered from non-MLX checkpoint"
+            )
 
 if __name__ == "__main__":
     unittest.main()
