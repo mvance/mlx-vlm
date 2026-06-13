@@ -594,18 +594,17 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         # (like layer_scalar) to prevent load_weights from raising a ValueError.
         # We can safely do this by keeping only keys that match the model's parameters
         # or their quantized counterparts (.scales, .biases).
-        model_keys = set(dict(tree_flatten(model.parameters())).keys())
+        model_keys = {k for k, _ in tree_flatten(model.parameters())}
         allowed_keys = set()
         for k in model_keys:
             allowed_keys.add(k)
             if k.endswith(".weight"):
                 base = k[:-7]
-                if base:
-                    allowed_keys.add(f"{base}.scales")
-                    allowed_keys.add(f"{base}.biases")
-                else:
-                    allowed_keys.add("scales")
-                    allowed_keys.add("biases")
+                allowed_keys.add(f"{base}.scales")
+                allowed_keys.add(f"{base}.biases")
+            elif k == "weight":
+                allowed_keys.add("scales")
+                allowed_keys.add("biases")
         weights = {k: v for k, v in weights.items() if k in allowed_keys}
 
     if not has_quantization:
