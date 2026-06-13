@@ -9,7 +9,7 @@ import json
 class TestGemma4Regression(unittest.TestCase):
     def test_load_mlx_format_with_extra_weights(self):
         """
-        Verify that models in MLX format with extra legacy weights (like layer_scalar)
+        Verify that models in MLX format with extra legacy weights (like layer_scalar_legacy)
         can be loaded successfully by ensuring module-specific sanitization runs.
         """
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -69,8 +69,6 @@ class TestGemma4Regression(unittest.TestCase):
                     f"language_model.model.layers.{i}.mlp.gate_proj.weight": mx.zeros((32, 16)),
                     f"language_model.model.layers.{i}.mlp.up_proj.weight": mx.zeros((32, 16)),
                     f"language_model.model.layers.{i}.mlp.down_proj.weight": mx.zeros((16, 32)),
-                    # layer_scalar is present in legacy checkpoints (pre-KV-sharing architecture)
-                    # and should be silently dropped by the sanitizer, not cause a ValueError.
                     f"language_model.model.layers.{i}.layer_scalar": mx.ones((1,)),
                 }
 

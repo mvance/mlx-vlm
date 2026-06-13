@@ -553,14 +553,16 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         # Sanitize weights
         weights = sanitize_weights(model, weights)
 
-        if hasattr(model, "thinker") and hasattr(model.thinker, "sanitize"):
-            weights = sanitize_weights(model.thinker, weights)
-            if getattr(model.thinker, "vision_tower", None) is not None:
-                weights = sanitize_weights(model.thinker.vision_tower, weights)
-            if getattr(model.thinker, "audio_tower", None) is not None:
-                weights = sanitize_weights(model.thinker.audio_tower, weights)
-            if getattr(model.thinker, "language_model", None) is not None:
-                weights = sanitize_weights(model.thinker.language_model, weights)
+        thinker = getattr(model, "thinker", None)
+        if thinker is not None:
+            if hasattr(thinker, "sanitize"):
+                weights = sanitize_weights(thinker, weights)
+            if getattr(thinker, "vision_tower", None) is not None:
+                weights = sanitize_weights(thinker.vision_tower, weights)
+            if getattr(thinker, "audio_tower", None) is not None:
+                weights = sanitize_weights(thinker.audio_tower, weights)
+            if getattr(thinker, "language_model", None) is not None:
+                weights = sanitize_weights(thinker.language_model, weights)
         else:
             vision_cfg = getattr(model_config, "vision_config", None)
             if hasattr(model_class, "VisionModel") and vision_cfg is not None:
@@ -587,10 +589,14 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         allowed_keys = set()
         for k in model_keys:
             allowed_keys.add(k)
-            if k.endswith(".weight"):
-                base = k[:-7]
-                allowed_keys.add(f"{base}.scales")
-                allowed_keys.add(f"{base}.biases")
+            if k == "weight" or k.endswith(".weight"):
+                base = k[:-7] if k.endswith(".weight") else ""
+                if base:
+                    allowed_keys.add(f"{base}.scales")
+                    allowed_keys.add(f"{base}.biases")
+                else:
+                    allowed_keys.add("scales")
+                    allowed_keys.add("biases")
         weights = {k: v for k, v in weights.items() if k in allowed_keys}
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
