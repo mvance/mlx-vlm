@@ -569,7 +569,6 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 if vision_cfg is not None:
                     weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
                 else:
-                    import logging
                     logging.debug("Skipping VisionModel sanitization: vision_config is None")
             
             text_cfg = getattr(model_config, "text_config", None)
@@ -577,7 +576,6 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 if text_cfg is not None:
                     weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
                 else:
-                    import logging
                     logging.debug("Skipping LanguageModel sanitization: text_config is None")
             
             audio_cfg = getattr(model_config, "audio_config", None)
@@ -585,7 +583,6 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 if audio_cfg is not None:
                     weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
                 else:
-                    import logging
                     logging.debug("Skipping AudioModel sanitization: audio_config is None")
 
         if getattr(model, "code2wav", None) is not None:
