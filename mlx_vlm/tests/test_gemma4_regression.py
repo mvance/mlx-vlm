@@ -71,8 +71,6 @@ class TestGemma4Regression(unittest.TestCase):
                     f"language_model.model.layers.{i}.mlp.up_proj.weight": mx.zeros((32, 16)),
                     f"language_model.model.layers.{i}.mlp.down_proj.weight": mx.zeros((16, 32)),
                     f"language_model.model.layers.{i}.layer_scalar": mx.ones((1,)),
-                    # layer_scalar_legacy is a fake legacy key to prove filtering works
-                    
                 }
 
             weights = {
