@@ -7,9 +7,10 @@ from typing import Dict
 import json
 
 class TestGemma4Regression(unittest.TestCase):
+
     def test_load_mlx_format_with_extra_weights(self):
         """
-        Verify that models in MLX format with extra legacy weights (like layer_scalar_legacy)
+        Verify that models in MLX format with extra legacy weights (like layer_scalar)
         can be loaded successfully by ensuring module-specific sanitization runs.
         """
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -29,7 +30,7 @@ class TestGemma4Regression(unittest.TestCase):
                 "sliding_window": 32,
                 "sliding_window_pattern": 2,
                 "layer_types": ["full_attention"] * 4,
-                "use_double_wide_mlp": False # PREVENT MLP SIZE MISMATCH
+                "use_double_wide_mlp": False # prevent mlp size mismatch
             }
             config = {
                 "model_type": "gemma4",
@@ -70,6 +71,8 @@ class TestGemma4Regression(unittest.TestCase):
                     f"language_model.model.layers.{i}.mlp.up_proj.weight": mx.zeros((32, 16)),
                     f"language_model.model.layers.{i}.mlp.down_proj.weight": mx.zeros((16, 32)),
                     f"language_model.model.layers.{i}.layer_scalar": mx.ones((1,)),
+                    # layer_scalar_legacy is a fake legacy key to prove filtering works
+                    f"language_model.model.layers.{i}.layer_scalar_legacy": mx.ones((1,)),
                 }
 
             weights = {
@@ -109,12 +112,22 @@ class TestGemma4Regression(unittest.TestCase):
             model = load_model(tmp_path)
             self.assertIsNotNone(model)
             
+            from mlx.utils import tree_flatten
+            loaded_keys = set(dict(tree_flatten(model.parameters())).keys())
+            self.assertNotIn(
+                "language_model.model.layers.0.layer_scalar_legacy",
+                loaded_keys,
+                "Legacy key should have been filtered from MLX-format checkpoint"
+            )
+            
             # 2. Test the non-MLX format path (where we run full sanitization)
             non_mlx_path = tmp_path / "non_mlx"
             non_mlx_path.mkdir()
             with open(non_mlx_path / "config.json", "w") as f:
                 json.dump(config, f)
-            mx.save_safetensors(str(non_mlx_path / "model.safetensors"), weights) # No metadata = non-MLX
+            # Remove the dummy legacy keys so the non-MLX path can load cleanly
+            clean_weights = {k: v for k, v in weights.items() if "legacy" not in k}
+            mx.save_safetensors(str(non_mlx_path / "model.safetensors"), clean_weights) # No metadata = non-MLX
             
             non_mlx_model = load_model(non_mlx_path)
             self.assertIsNotNone(non_mlx_model)

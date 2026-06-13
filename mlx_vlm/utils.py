@@ -565,16 +565,28 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 weights = sanitize_weights(thinker.language_model, weights)
         else:
             vision_cfg = getattr(model_config, "vision_config", None)
-            if hasattr(model_class, "VisionModel") and vision_cfg is not None:
-                weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
+            if hasattr(model_class, "VisionModel"):
+                if vision_cfg is not None:
+                    weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
+                else:
+                    import logging
+                    logging.debug("Skipping VisionModel sanitization: vision_config is None")
             
             text_cfg = getattr(model_config, "text_config", None)
-            if hasattr(model_class, "LanguageModel") and text_cfg is not None:
-                weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
+            if hasattr(model_class, "LanguageModel"):
+                if text_cfg is not None:
+                    weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
+                else:
+                    import logging
+                    logging.debug("Skipping LanguageModel sanitization: text_config is None")
             
             audio_cfg = getattr(model_config, "audio_config", None)
-            if hasattr(model_class, "AudioModel") and audio_cfg is not None:
-                weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
+            if hasattr(model_class, "AudioModel"):
+                if audio_cfg is not None:
+                    weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
+                else:
+                    import logging
+                    logging.debug("Skipping AudioModel sanitization: audio_config is None")
 
         if getattr(model, "code2wav", None) is not None:
             weights = sanitize_weights(model.code2wav, weights)
@@ -589,8 +601,8 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         allowed_keys = set()
         for k in model_keys:
             allowed_keys.add(k)
-            if k == "weight" or k.endswith(".weight"):
-                base = k[:-7] if k.endswith(".weight") else ""
+            if k.endswith(".weight"):
+                base = k[:-7]
                 if base:
                     allowed_keys.add(f"{base}.scales")
                     allowed_keys.add(f"{base}.biases")
@@ -598,6 +610,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                     allowed_keys.add("scales")
                     allowed_keys.add("biases")
         weights = {k: v for k, v in weights.items() if k in allowed_keys}
+
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
         if quantization_config is None:
