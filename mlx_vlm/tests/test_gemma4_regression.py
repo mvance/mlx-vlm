@@ -3,8 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Dict
+from unittest.mock import patch
 
 import mlx.core as mx
+import mlx.nn as nn
 
 from mlx_vlm.utils import load_model
 
@@ -150,6 +152,24 @@ class TestGemma4Regression(unittest.TestCase):
 
         return weights
 
+    def _load_model_and_capture_weight_keys(self, tmp_path: Path):
+        loaded_weight_keys = []
+        original_load_weights = nn.Module.load_weights
+
+        def capture_load_weights(model, file_or_weights, *args, **kwargs):
+            loaded_weight_keys.append({key for key, _ in file_or_weights})
+            return original_load_weights(model, file_or_weights, *args, **kwargs)
+
+        with patch.object(nn.Module, "load_weights", capture_load_weights):
+            model = load_model(tmp_path)
+
+        self.assertEqual(
+            1,
+            len(loaded_weight_keys),
+            "Expected load_model to call load_weights exactly once",
+        )
+        return model, loaded_weight_keys[0]
+
     def test_load_mlx_format_filters_legacy_weights(self):
         """
         Verify that MLX-format checkpoints with unused shared-KV weights load
@@ -166,29 +186,25 @@ class TestGemma4Regression(unittest.TestCase):
                 metadata={"format": "mlx"},
             )
 
-            model = load_model(tmp_path)
+            model, loaded_weight_keys = self._load_model_and_capture_weight_keys(tmp_path)
             self.assertIsNotNone(model)
 
             # Verify filtering:
             # In Gemma4 with num_kv_shared_layers=2 and num_hidden_layers=4,
             # layers 2 and 3 share KV projections and thus should have them filtered out.
-            from mlx.utils import tree_flatten
-
-            loaded_keys = set(dict(tree_flatten(model.parameters())).keys())
-
             self.assertIn(
                 "language_model.model.layers.0.self_attn.k_proj.weight",
-                loaded_keys,
+                loaded_weight_keys,
                 "Non-shared KV weight should be present",
             )
             self.assertIn(
                 "language_model.model.layers.2.layer_scalar",
-                loaded_keys,
+                loaded_weight_keys,
                 "Valid layer_scalar weight should be preserved",
             )
             self.assertNotIn(
                 "language_model.model.layers.2.self_attn.k_proj.weight",
-                loaded_keys,
+                loaded_weight_keys,
                 "Unused shared KV weight should have been filtered from MLX-format checkpoint",
             )
 
@@ -204,26 +220,22 @@ class TestGemma4Regression(unittest.TestCase):
             # Save in non-MLX format (no metadata)
             mx.save_safetensors(str(tmp_path / "model.safetensors"), weights)
 
-            model = load_model(tmp_path)
+            model, loaded_weight_keys = self._load_model_and_capture_weight_keys(tmp_path)
             self.assertIsNotNone(model)
-
-            from mlx.utils import tree_flatten
-
-            loaded_keys = set(dict(tree_flatten(model.parameters())).keys())
 
             self.assertIn(
                 "language_model.model.layers.0.self_attn.k_proj.weight",
-                loaded_keys,
+                loaded_weight_keys,
                 "Non-shared KV weight should be present",
             )
             self.assertIn(
                 "language_model.model.layers.2.layer_scalar",
-                loaded_keys,
+                loaded_weight_keys,
                 "Valid layer_scalar weight should be preserved",
             )
             self.assertNotIn(
                 "language_model.model.layers.2.self_attn.k_proj.weight",
-                loaded_keys,
+                loaded_weight_keys,
                 "Unused shared KV weight should have been filtered from non-MLX checkpoint",
             )
 
