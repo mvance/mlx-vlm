@@ -571,6 +571,8 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 weights = sanitize_weights(component, weights)
                 return
 
+            # Fall back to class-based sanitization when no component instance
+            # exists or the instance has no sanitize hook.
             config_value = getattr(model_config, config_name, None)
             component_class = getattr(model_class, class_name, None)
             if component_class is not None and config_value is not None:

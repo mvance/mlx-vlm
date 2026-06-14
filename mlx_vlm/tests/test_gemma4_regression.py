@@ -8,6 +8,7 @@ from unittest.mock import patch
 import mlx.core as mx
 import mlx.nn as nn
 
+from mlx_vlm import utils as utils_module
 from mlx_vlm.utils import load_model
 
 
@@ -220,8 +221,19 @@ class TestGemma4Regression(unittest.TestCase):
             # Save in non-MLX format (no metadata)
             mx.save_safetensors(str(tmp_path / "model.safetensors"), weights)
 
-            model, loaded_weight_keys = self._load_model_and_capture_weight_keys(tmp_path)
+            with patch(
+                "mlx_vlm.utils.sanitize_weights",
+                wraps=utils_module.sanitize_weights,
+            ) as sanitize_spy:
+                model, loaded_weight_keys = self._load_model_and_capture_weight_keys(
+                    tmp_path
+                )
             self.assertIsNotNone(model)
+            self.assertGreater(
+                sanitize_spy.call_count,
+                0,
+                "Expected non-MLX load path to invoke sanitize_weights",
+            )
 
             # Non-MLX checkpoints rely on Gemma4.LanguageModel.sanitize() to
             # remove per-layer KV weights for shared layers.
