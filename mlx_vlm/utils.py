@@ -514,8 +514,12 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
     for wf in weight_files:
         weights.update(_load_safetensors(wf))
 
-    with safetensors.safe_open(weight_files[0], framework="np") as f:
-        is_mlx_format = f.metadata() and f.metadata().get("format") == "mlx"
+    is_mlx_format = False
+    for wf in weight_files:
+        with safetensors.safe_open(wf, framework="np") as f:
+            if f.metadata() and f.metadata().get("format") == "mlx":
+                is_mlx_format = True
+                break
 
     model_class, _ = get_model_and_args(config=config)
 
@@ -593,22 +597,9 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
     if getattr(model, "talker", None) is not None:
         weights = sanitize_weights(model.talker, weights)
 
-    if is_mlx_format:
-        # For MLX format checkpoints, we now filter out any legacy extra weights
-        # that were not removed by the module-specific sanitizers.
-        # This prevents load_weights from raising a ValueError.
-        model_keys = {k for k, _ in tree_flatten(model.parameters())}
-        allowed_keys = set()
-        for k in model_keys:
-            allowed_keys.add(k)
-            if k.endswith(".weight"):
-                base = k[:-7]
-                allowed_keys.add(f"{base}.scales")
-                allowed_keys.add(f"{base}.biases")
-            elif k == "weight":
-                allowed_keys.add("scales")
-                allowed_keys.add("biases")
-        weights = {k: v for k, v in weights.items() if k in allowed_keys}
+
+
+
 
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
@@ -690,6 +681,14 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 "Please use a quantized model with mode 'nvfp4' or 'mxfp8'."
             )
         model = quantize_activations(model)
+
+    if is_mlx_format:
+        # For MLX format checkpoints, we now filter out any legacy extra weights
+        # that were not removed by the module-specific sanitizers.
+        # This is done AFTER quantization to ensure we match the final model parameters.
+        # This prevents load_weights from raising a ValueError.
+        model_keys = {k for k, _ in tree_flatten(model.parameters())}
+        weights = {k: v for k, v in weights.items() if k in model_keys}
 
     model.load_weights(list(weights.items()))
 
