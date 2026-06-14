@@ -677,11 +677,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         # Gemma4 MLX checkpoints may contain legacy shared-KV weights that no
         # longer exist in the final model. Filter after quantization so the
         # allowed set matches the parameters load_weights expects.
-        if getattr(model, "_is_text_model", False):
-            load_target = model.language_model._model
-        else:
-            load_target = model
-        model_keys = {k for k, _ in tree_flatten(load_target.parameters())}
+        model_keys = {k for k, _ in tree_flatten(model.parameters())}
         weights = {k: v for k, v in weights.items() if k in model_keys}
 
     model.load_weights(list(weights.items()))
