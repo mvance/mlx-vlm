@@ -181,6 +181,11 @@ class TestGemma4Regression(unittest.TestCase):
                 loaded_keys,
                 "Non-shared KV weight should be present",
             )
+            self.assertIn(
+                "language_model.model.layers.2.layer_scalar",
+                loaded_keys,
+                "Valid layer_scalar weight should be preserved",
+            )
             self.assertNotIn(
                 "language_model.model.layers.2.self_attn.k_proj.weight",
                 loaded_keys,
@@ -210,6 +215,11 @@ class TestGemma4Regression(unittest.TestCase):
                 "language_model.model.layers.0.self_attn.k_proj.weight",
                 loaded_keys,
                 "Non-shared KV weight should be present",
+            )
+            self.assertIn(
+                "language_model.model.layers.2.layer_scalar",
+                loaded_keys,
+                "Valid layer_scalar weight should be preserved",
             )
             self.assertNotIn(
                 "language_model.model.layers.2.self_attn.k_proj.weight",

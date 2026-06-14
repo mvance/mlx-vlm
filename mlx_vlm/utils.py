@@ -557,7 +557,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         # Sanitize weights (top-level remapping and transpositions).
         weights = sanitize_weights(model, weights)
 
-        def sanitize_component(instance_names, class_name, config_name):
+        def sanitize_component(instance_names, class_name, config_name) -> None:
             nonlocal weights
             component = next(
                 (
@@ -567,7 +567,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 ),
                 None,
             )
-            if component is not None:
+            if component is not None and hasattr(component, "sanitize"):
                 weights = sanitize_weights(component, weights)
                 return
 
@@ -651,25 +651,11 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             else model
         )
 
-        def should_quantize(p, m):
-            # Skip legacy multimodal layers unless the checkpoint has quantized
-            # tensors for this exact module.
-            if (
-                skip_multimodal_module(p)
-                and skip_vision
-                and not _has_quantized_weights(p, weights)
-            ):
-                return False
-            # Handle custom per layer quantizations
-            if p in config["quantization"]:
-                return config["quantization"][p]
-            if not hasattr(m, "to_quantized"):
-                return False
-            # Skip layers not divisible by 64
-            if hasattr(m, "weight") and m.weight.size % 64 != 0:
-                return False
-            # Handle legacy models which may not have everything quantized
-            return f"{p}.scales" in weights
+        should_quantize = get_class_predicate(
+            skip_vision=skip_vision,
+            weights=weights,
+            quantization_config=config["quantization"],
+        )
 
         nn.quantize(
             quantized_model,
