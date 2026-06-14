@@ -521,7 +521,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
                 is_mlx_format = True
                 break
 
-    model_class, _ = get_model_and_args(config=config)
+    model_class, model_type = get_model_and_args(config=config)
 
     # Initialize text and vision configs if not present
     config.setdefault("text_config", config.pop("llm_config", {}))
@@ -554,52 +554,57 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         config["quantization_config"] = transformed_quantization
 
     if not is_mlx_format:
-        # Sanitize weights (top-level remapping and transpositions)
+        # Sanitize weights (top-level remapping and transpositions).
         weights = sanitize_weights(model, weights)
 
-    # Always run module-specific sanitization to handle architecture changes
-    # and legacy key remapping for both MLX and non-MLX checkpoints.
-    # (Module sanitizers are typically idempotent regarding transpositions).
-    thinker = getattr(model, "thinker", None)
-    if thinker is not None:
-        if hasattr(thinker, "sanitize"):
-            weights = sanitize_weights(thinker, weights)
-        if getattr(thinker, "vision_tower", None) is not None:
-            weights = sanitize_weights(thinker.vision_tower, weights)
-        if getattr(thinker, "audio_tower", None) is not None:
-            weights = sanitize_weights(thinker.audio_tower, weights)
-        if getattr(thinker, "language_model", None) is not None:
-            weights = sanitize_weights(thinker.language_model, weights)
-    else:
-        vision_cfg = getattr(model_config, "vision_config", None)
-        if hasattr(model_class, "VisionModel"):
-            if vision_cfg is not None:
-                weights = sanitize_weights(model_class.VisionModel, weights, vision_cfg)
-            else:
-                logging.debug("Skipping VisionModel sanitization: vision_config is None")
-        
-        text_cfg = getattr(model_config, "text_config", None)
-        if hasattr(model_class, "LanguageModel"):
-            if text_cfg is not None:
-                weights = sanitize_weights(model_class.LanguageModel, weights, text_cfg)
-            else:
-                logging.debug("Skipping LanguageModel sanitization: text_config is None")
-        
-        audio_cfg = getattr(model_config, "audio_config", None)
-        if hasattr(model_class, "AudioModel"):
-            if audio_cfg is not None:
-                weights = sanitize_weights(model_class.AudioModel, weights, audio_cfg)
-            else:
-                logging.debug("Skipping AudioModel sanitization: audio_config is None")
+        def sanitize_component(instance_names, class_name, config_name):
+            nonlocal weights
+            component = next(
+                (
+                    getattr(model, name, None)
+                    for name in instance_names
+                    if getattr(model, name, None) is not None
+                ),
+                None,
+            )
+            if component is not None:
+                weights = sanitize_weights(component, weights)
+                return
 
-    if getattr(model, "code2wav", None) is not None:
-        weights = sanitize_weights(model.code2wav, weights)
-    if getattr(model, "talker", None) is not None:
-        weights = sanitize_weights(model.talker, weights)
+            config_value = getattr(model_config, config_name, None)
+            component_class = getattr(model_class, class_name, None)
+            if component_class is not None and config_value is not None:
+                weights = sanitize_weights(component_class, weights, config_value)
+            elif component_class is not None:
+                logging.debug(
+                    "Skipping %s sanitization: %s is None",
+                    class_name,
+                    config_name,
+                )
 
+        thinker = getattr(model, "thinker", None)
+        if thinker is not None:
+            if hasattr(thinker, "sanitize"):
+                weights = sanitize_weights(thinker, weights)
+            if getattr(thinker, "vision_tower", None) is not None:
+                weights = sanitize_weights(thinker.vision_tower, weights)
+            if getattr(thinker, "audio_tower", None) is not None:
+                weights = sanitize_weights(thinker.audio_tower, weights)
+            if getattr(thinker, "language_model", None) is not None:
+                weights = sanitize_weights(thinker.language_model, weights)
+        else:
+            sanitize_component(
+                ("vision_tower", "vision_model"), "VisionModel", "vision_config"
+            )
+            sanitize_component(("language_model",), "LanguageModel", "text_config")
+            sanitize_component(
+                ("audio_tower", "audio_model"), "AudioModel", "audio_config"
+            )
 
-
-
+        if getattr(model, "code2wav", None) is not None:
+            weights = sanitize_weights(model.code2wav, weights)
+        if getattr(model, "talker", None) is not None:
+            weights = sanitize_weights(model.talker, weights)
 
     if not has_quantization:
         quantization_config = config.get("quantization_config", None)
@@ -682,12 +687,15 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
             )
         model = quantize_activations(model)
 
-    if is_mlx_format:
-        # For MLX format checkpoints, we now filter out any legacy extra weights
-        # that were not removed by the module-specific sanitizers.
-        # This is done AFTER quantization to ensure we match the final model parameters.
-        # This prevents load_weights from raising a ValueError.
-        model_keys = {k for k, _ in tree_flatten(model.parameters())}
+    if is_mlx_format and model_type == "gemma4":
+        # Gemma4 MLX checkpoints may contain legacy shared-KV weights that no
+        # longer exist in the final model. Filter after quantization so the
+        # allowed set matches the parameters load_weights expects.
+        if getattr(model, "_is_text_model", False):
+            load_target = model.language_model._model
+        else:
+            load_target = model
+        model_keys = {k for k, _ in tree_flatten(load_target.parameters())}
         weights = {k: v for k, v in weights.items() if k in model_keys}
 
     model.load_weights(list(weights.items()))
