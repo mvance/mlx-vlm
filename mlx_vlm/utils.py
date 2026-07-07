@@ -535,7 +535,7 @@ python -m mlx_vlm.convert --hf-path <local_dir> --mlx-path <mlx_dir>
         with safetensors.safe_open(weight_files[0], framework="np") as f:
             metadata = f.metadata()
             is_mlx_format = bool(metadata and metadata.get("format") == "mlx")
-    except (FileNotFoundError, OSError, ValueError):
+    except Exception:
         pass
 
     model_class, model_type = get_model_and_args(config=config)
